@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 
-contract Staking is Ownable {
+contract StakingManager is Ownable {
     using SafeERC20 for IERC20;
 
     error Staking_ZeroAmt();
@@ -30,16 +30,18 @@ contract Staking is Ownable {
     //reward accumulator index
     uint256 public s_rewardAcc;
     // updates everyime a new staker stakes or withdraws
-    uint256 public s_rewardPerTokenPerBlock;
+    uint256 private s_rewardPerTokenPerBlock;
     //block number for when the pool was last updated
-    uint256 public lastBlockUpdated;
+    uint256 private s_lastBlockUpdated;
+    uint256 private immutable i_secondsPerBlock;
     mapping(address => UserInfo) public s_userInfo;
-    uint256 public s_rewardRate;
+    //rewards per block
+    uint256 private s_rewardRate;
 
     // precision factor for rewardAcc
     uint64 constant PRECISION = 1e12;
 
-    constructor(address _stakingToken, address _rewardToken) Ownable(msg.sender) {
+    constructor(address _stakingToken, address _rewardToken ) Ownable(msg.sender) {
         s_stakingToken = IERC20(_stakingToken);
         s_rewardToken = IERC20(_rewardToken);
     }
@@ -49,9 +51,10 @@ contract Staking is Ownable {
     /// @notice sets the pool's config
     /// @dev sets rewardRate as rewards per sec
     /// @param _rewards the TOTAL amount of rewards to be distributed
-    function setPool(uint256 _duration, uint256 _rewards) external onlyOwner {
+    function setPool(uint256 _duration, uint256 _rewards, uint256 _secondsPerBlock) external onlyOwner {
         s_duration = _duration;
-        s_rewardRate = _rewards / _duration;
+        uint256 blockCount = _duration / _secondsPerBlock;
+        s_rewardRate = _rewards / blockCount;
         s_finishAt = block.timestamp + _duration;
         s_rewardAcc = 0;
         s_rewardPerTokenPerBlock = 0;
@@ -81,7 +84,7 @@ contract Staking is Ownable {
 
     //internal function
     function updatePool() internal {
-        uint256 _lastUpdatedBlock = lastBlockUpdated;
+        uint256 _lastUpdatedBlock = s_lastBlockUpdated;
         uint256 blockInterval = block.number - _lastUpdatedBlock;
         uint256 rewardIssued = s_rewardPerTokenPerBlock * blockInterval;
         s_rewardAcc += rewardIssued;
