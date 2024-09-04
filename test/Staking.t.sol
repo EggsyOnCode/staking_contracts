@@ -16,8 +16,12 @@ contract StakingManagerTest is Test {
 
     uint256 initialSupply = 1e24;
     uint256 rewardAmount = 1e20;
-    uint256 stakingDuration = 3600; // 1 hour
+    uint256 stakingDuration = 86400; // 1 hour
     uint256 secondsPerBlock = 12;
+    //1000000000000000000
+    //333333333333333333
+    //333333333333333333
+    //11111111111111111100
 
     function setUp() public {
         stakingToken = new ERC20Mock("StakingToken", "STK", address(this), initialSupply);
@@ -96,17 +100,12 @@ contract StakingManagerTest is Test {
     }
 
     function testIntegration() public {
-        uint256 stakeAmount1 = 1e18;
+        //reward Rate
+        uint256 rR = stakingManager.getRewardRate();
+
         uint256 stakeAmount2 = 2e18;
 
-        stakingToken.mint(user1, stakeAmount1);
         stakingToken.mint(user2, stakeAmount2);
-
-        // User1 stakes tokens
-        vm.prank(user1);
-        stakingToken.approve(address(stakingManager), stakeAmount1);
-        vm.prank(user1);
-        stakingManager.stakeTokens(stakeAmount1);
 
         // User2 stakes tokens
         vm.prank(user2);
@@ -117,22 +116,21 @@ contract StakingManagerTest is Test {
         // Advance time and blocks
         vm.roll(block.number + 100);
 
-        // // User1 claims reward
-        // vm.prank(user1);
-        // stakingManager.claimReward();
-
-        // // Check User1's reward balance
-        // uint256 rewardBalanceUser1 = rewardToken.balanceOf(user1);
-        // assertTrue(rewardBalanceUser1 > 0);
-
         // User2 withdraws tokens and claims reward
         vm.startPrank(user2);
-        stakingManager.withdrawTokens(stakeAmount2);
+        (uint256 amt, uint256 debt) = stakingManager.getUserInfo(user2);
         stakingManager.claimReward();
-
         // Check User2's reward balance and staked tokens
         uint256 rewardBalanceUser2 = rewardToken.balanceOf(user2);
-        assertTrue(rewardBalanceUser2 > 0);
+        uint256 rewardExpectedParam = (rR * 100 * 1e18) / stakingManager.s_totalSupply();
+        emit log_uint(rR);
+        emit log_uint(amt);
+        uint256 rewardExpected = ((amt * rewardExpectedParam) / 1e18) - debt;
+        emit log_uint(rewardExpected);
+        emit log_uint(rewardBalanceUser2);
+        assertTrue(rewardBalanceUser2 == rewardExpected);
+
+        stakingManager.withdrawTokens(stakeAmount2);
         assertEq(stakingToken.balanceOf(user2), stakeAmount2);
     }
 }

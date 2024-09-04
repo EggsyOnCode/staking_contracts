@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract StakingManager is Ownable {
     using SafeERC20 for IERC20;
@@ -86,8 +87,9 @@ contract StakingManager is Ownable {
         }
         updatePool();
         UserInfo storage user = s_userInfo[msg.sender];
+        console2.log("user.amount", user.amount);
         user.amount -= _amt;
-        user.rewardDebt -= _amt * s_rewardAcc;
+        user.rewardDebt = (user.amount * s_rewardAcc) / 1e18;
 
         s_stakingToken.safeTransfer(msg.sender, _amt);
     }
@@ -95,24 +97,35 @@ contract StakingManager is Ownable {
     function claimReward() external {
         updatePool();
         UserInfo storage user = s_userInfo[msg.sender];
-        uint256 reward = user.amount * s_rewardAcc - user.rewardDebt;
-        user.rewardDebt = 0;
-        user.amount = 0;
+        console2.log("rewardAcc", s_rewardAcc);
+        console2.log("user.amount", user.amount);
+        console2.log("user debt", user.rewardDebt);
+        uint256 reward = (user.amount * s_rewardAcc) / 1e18 - user.rewardDebt;
+        user.rewardDebt = user.amount;
         s_rewardToken.safeTransfer(msg.sender, reward);
     }
 
     //internal function
     function updatePool() internal {
         uint256 _lastUpdatedBlock = s_lastBlockUpdated;
+        if (block.number <= _lastUpdatedBlock) {
+            return;
+        }
         uint256 blockInterval = block.number - _lastUpdatedBlock;
         s_totalSupply = s_stakingToken.balanceOf(address(this));
+        console2.log("s_totalSupply", s_totalSupply);
         if (s_totalSupply == 0) {
             s_lastBlockUpdated = block.number;
             return;
         }
-        s_rewardPerTokenPerBlock = s_rewardRate / s_totalSupply;
-        uint256 rewardIssued = s_rewardPerTokenPerBlock * blockInterval;
-        s_rewardAcc += rewardIssued;
+        s_rewardPerTokenPerBlock = (s_rewardRate * 1e18) / s_totalSupply;
+        console2.log("rewardRate", s_rewardRate);
+        console2.log("s_rewardPerTokenPerBlock", s_rewardPerTokenPerBlock);
+        console2.log("block interval", blockInterval);
+        console2.log("reward issued", s_rewardAcc + s_rewardPerTokenPerBlock * blockInterval);
+        console2.log("reward Acc", s_rewardAcc);
+        s_rewardAcc += s_rewardPerTokenPerBlock * blockInterval;
+        s_lastBlockUpdated = block.number;
     }
 
     //View
@@ -125,5 +138,16 @@ contract StakingManager is Ownable {
         }
         UserInfo storage user = s_userInfo[_user];
         return user.amount * s_rewardAcc - user.rewardDebt;
+    }
+
+    // Getters
+
+    function getRewardRate() external view returns (uint256) {
+        return s_rewardRate;
+    }
+
+    function getUserInfo(address _user) external view returns (uint256, uint256) {
+        UserInfo storage user = s_userInfo[_user];
+        return (user.amount, user.rewardDebt);
     }
 }
