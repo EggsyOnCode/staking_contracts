@@ -6,3 +6,4 @@
 - we also need to keep track of the reward_debt per user + how much they have staked in a mapping of UserInfo Struct
 - reward_debt is updated everytime the user makes multiple deposits by the formula `reward_debt += _newAmt * updatedRewardAcculmulator`
 - for the sake of precision, we have to use a precision multiplier for rewardAcc
+- the algorithm seems unfair to HODLers who have been staking for a long time, and a whale could stake a hefty portion to reduce rewards per capita. (but since for the same time interval, the rewards for all (including the whale) are defreciating, there's no incentive for the whales to do this)
