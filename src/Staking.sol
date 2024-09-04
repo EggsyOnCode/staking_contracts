@@ -76,7 +76,7 @@ contract StakingManager is Ownable {
         updatePool();
         UserInfo storage user = s_userInfo[msg.sender];
         user.amount += _amt;
-        user.rewardDebt += _amt * s_rewardAcc;
+        user.rewardDebt += (_amt * s_rewardAcc) / 1e18;
 
         s_stakingToken.safeTransferFrom(msg.sender, address(this), _amt);
     }
