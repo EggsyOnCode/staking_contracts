@@ -7,3 +7,11 @@
 - reward_debt is updated everytime the user makes multiple deposits by the formula `reward_debt += _newAmt * updatedRewardAcculmulator`
 - for the sake of precision, we have to use a precision multiplier for rewardAcc
 - the algorithm seems unfair to HODLers who have been staking for a long time, and a whale could stake a hefty portion to reduce rewards per capita. (but since for the same time interval, the rewards for all (including the whale) are defreciating, there's no incentive for the whales to do this)
+
+## Features
+- APR is dynamic and not fixed! What if a user wants to stake and receive fixed APR? (future feature...)
+
+## Future changes
+
+- how to add more precision to my calculations?
+- Add Caching of storage vars inside funcs to reduce gas

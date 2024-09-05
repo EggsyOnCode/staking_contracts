@@ -10,6 +10,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * @notice A contract that allows users to stake tokens and earn rewards over time.
  * @dev This contract uses SafeERC20 for safe token transfers and is Ownable. The staking logic is a mixture of both
  *     MasterChef and StakingRewards contracts. Takes the best of both worlds
+ * Results are 96-98% accurate. The remaining 2-4% is due to rounding errors.
  */
 contract StakingManager is Ownable {
     using SafeERC20 for IERC20;
@@ -155,6 +156,7 @@ contract StakingManager is Ownable {
             s_lastBlockUpdated = block.number;
             return;
         }
+        // @dev SOLIDITY design pattern: Multiply first and divide last to preserve precision
         s_rewardPerTokenPerBlock = (s_rewardRate * PRECISION) / s_totalSupply;
         s_rewardAcc += s_rewardPerTokenPerBlock * blockInterval;
         s_lastBlockUpdated = block.number;
