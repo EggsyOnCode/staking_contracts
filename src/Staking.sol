@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
+ * YIELD FARMING!!!
  * @title StakingManager
  * @notice A contract that allows users to stake tokens and earn rewards over time.
  * @dev This contract uses SafeERC20 for safe token transfers and is Ownable. The staking logic is a mixture of both
