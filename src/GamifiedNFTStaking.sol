@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC721} from "./interfaces/IERC721.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "./interfaces/IERC20.sol";
 import {IRouter} from "./interfaces/IRouter.sol";
 
 contract NFTStakingManager is Ownable {
@@ -16,6 +16,8 @@ contract NFTStakingManager is Ownable {
     error SM_UserAlreadyBoosted();
     error SM_NotEnoughBalanceForBadgePurchase();
     error SM_LockingPeriodNotOver();
+    error SM_NotEligibleForRewards();
+    error SM_NoRewardsAvailable();
 
     event NFTStaked(address indexed user, uint256 indexed quantity);
     event NFTUnstaked(address indexed user, uint256 indexed quantity);
@@ -23,6 +25,7 @@ contract NFTStakingManager is Ownable {
     event TokensStaked(address indexed user, uint256 indexed quantity);
     event BoostedLvl(address indexed user, uint8 indexed level);
     event TokensUnstaked(address indexed user, uint256 indexed quantity);
+    event RewardsDisbursed(address indexed user, uint256 indexed amount);
 
     struct User {
         uint256 stakedNFTs;
@@ -61,6 +64,7 @@ contract NFTStakingManager is Ownable {
     address[5] private s_validCurrencies;
     // Mapping from user address to an array of staked NFT IDs.
     mapping(address user => uint256[]) private s_stakedIds;
+    uint256 private s_totalRewards; // total Rewards disbursed by the contract till now
 
     constructor(address _feeWallet) Ownable(msg.sender) {
         s_feeWallet = _feeWallet;
@@ -254,9 +258,21 @@ contract NFTStakingManager is Ownable {
         emit BadgeBought(msg.sender, _level);
     }
 
+    function claimRewards() external {
+        // calcaulting total Rewrads (pending rewards + earned)
+        // if the user is boosted then the those staked tokens are locked and won't be available for withdrawal
+        // rewards are minted to the user (instead of trasnferred)
+        User memory user = s_users[msg.sender];
+        uint256 totalRewards = calculateTotalRewards(msg.sender);
+
+        s_rewardToken.mint(msg.sender, totalRewards);
+        s_totalRewards += totalRewards;
+        emit RewardsDisbursed(msg.sender, totalRewards);
+    }
+
     // Internals
 
-    //@param _amoutn is the cost of the badge
+    //@param _amount is the cost of the badge
     function _executePayment(address _sender, uint256 _amount, address _currency) internal {
         // the feeWallet needs to be funded in protocol's token (in this case the reward token itself)
         // 3 ways
@@ -305,6 +321,27 @@ contract NFTStakingManager is Ownable {
             }
             s_rewardToken.transferFrom(_sender, s_feeWallet, _amount);
         }
+    }
+
+    function calculateTotalRewards(address _user) internal returns (uint256 totalRewards) {
+        // returns the total rewards earned by the user
+        // reverts if pendingRewards = 0 && stakedNFts = 0
+        User memory user = s_users[_user];
+        if (user.pendingRewards == 0 && user.stakedNFTs == 0) {
+            revert SM_NotEligibleForRewards();
+        }
+        uint256 earnedRewards = earned(_user);
+        totalRewards = user.pendingRewards + earnedRewards;
+        if (totalRewards == 0) revert SM_NoRewardsAvailable();
+        user.pendingRewards = 0;
+        // if user has already unstaked all NFTs then stakedNFts would be 0
+        // if the user still has NFTs staked then the lastRewarded time should be updated
+        if (user.stakedNFTs == 0) {
+            user.lastRewarded = 0;
+        } else {
+            user.lastRewarded = block.timestamp;
+        }
+        s_users[_user] = user;
     }
 
     function _getLevel(uint256 _nfts) internal view returns (uint8) {
