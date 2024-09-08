@@ -9,14 +9,20 @@ import {IRouter} from "./interfaces/IRouter.sol";
 contract NFTStakingManager is Ownable {
     error SM_InvalidQuantity();
     error SM_NotEnoughNFTBalance();
+    error SM_NotEnoughProtocolTokens();
     error SM_BadgeForLvlMissing();
     error SM_BadgeAlreadyExists();
     error SM_InvalidCurrency();
+    error SM_UserAlreadyBoosted();
     error SM_NotEnoughBalanceForBadgePurchase();
+    error SM_LockingPeriodNotOver();
 
     event NFTStaked(address indexed user, uint256 indexed quantity);
     event NFTUnstaked(address indexed user, uint256 indexed quantity);
     event BadgeBought(address indexed user, uint8 indexed level);
+    event TokensStaked(address indexed user, uint256 indexed quantity);
+    event BoostedLvl(address indexed user, uint8 indexed level);
+    event TokensUnstaked(address indexed user, uint256 indexed quantity);
 
     struct User {
         uint256 stakedNFTs;
@@ -76,7 +82,7 @@ contract NFTStakingManager is Ownable {
         // thereby nullifying the rewards accumulated on prev staked amts
 
         // transfer NFTs to the contract
-        // update user's state (update level, badges, )
+        // update user's state (update level, badges)
         if (_quantity == 0) {
             revert SM_InvalidQuantity();
         }
@@ -144,12 +150,74 @@ contract NFTStakingManager is Ownable {
         emit NFTUnstaked(msg.sender, _quantity);
     }
 
-    function stakeTokens(uint256[] memory _nftIds) external {
-        // Staking logic
+    //@dev user can't stake multiple times i.e can't boost multiple times; they need to unstake first
+    //q how to handle boosts at different levels?
+    function boostLvl() external {
+        // reverts if the user has no staked NFTs or is already boosted or lacks the balance
+        // if not, the user has to stake the required AMT of reward tokens (defined for their current lvl) to boost their level
+        // event Emitted to notify the indexers
+        // locking period for teh user is updated ; also lastRewardTime and hence pending rewards are updated
+
+        User memory user = s_users[msg.sender];
+        if (user.stakedNFTs == 0) {
+            revert SM_NotEnoughNFTBalance();
+        }
+        if (user.isBoosted) {
+            revert SM_UserAlreadyBoosted();
+        }
+
+        uint256 userBalance = s_rewardToken.balanceOf(msg.sender);
+        uint256 reqAmt = s_boosterRewards[user.currentLevel - 1];
+        if (userBalance < reqAmt) {
+            revert SM_NotEnoughProtocolTokens();
+        } else {
+            uint256 actualAmt = reqAmt - user.stakedRewardTokens;
+            s_rewardToken.transferFrom(msg.sender, address(this), actualAmt);
+            user.stakedRewardTokens += actualAmt;
+            emit TokensStaked(msg.sender, reqAmt);
+        }
+
+        uint256 rewards = earned(msg.sender);
+        user.pendingRewards += rewards;
+        user.isBoosted = true;
+        user.lastRewarded = block.timestamp;
+        user.lockingPeriod = block.timestamp + LOCKING_PERIOD;
+
+        s_users[msg.sender] = user;
+        emit BoostedLvl(msg.sender, user.currentLevel);
     }
 
-    function unstakeTokens(uint256[] memory _nftIds) external {
-        // Staking logic
+    function unstakeTokens(uint256 _quantity) external {
+        // reverts if the user has no staked tokens or their locking period has not passed yet
+        // check if they are alread boosted and
+        User memory user = s_users[msg.sender];
+
+        if (user.stakedRewardTokens < _quantity) {
+            revert SM_NotEnoughProtocolTokens();
+        }
+
+        if (user.lockingPeriod > block.timestamp) {
+            revert SM_LockingPeriodNotOver();
+        }
+
+        uint256 remainingTokens = user.stakedRewardTokens - _quantity;
+        if (user.isBoosted) {
+            if (s_boosterRewards[user.currentLevel - 1] > remainingTokens) {
+                uint256 earnedRewards = earned(msg.sender);
+                user.pendingRewards += earnedRewards;
+                user.lastRewarded = block.timestamp;
+                user.isBoosted = false;
+            }
+        }
+
+        user.stakedRewardTokens = remainingTokens;
+        if (user.stakedRewardTokens == 0) {
+            user.lockingPeriod = 0;
+        }
+        s_users[msg.sender] = user;
+        s_rewardToken.transfer(msg.sender, _quantity);
+
+        emit TokensUnstaked(msg.sender, _quantity);
     }
 
     function buyBadge(uint8 _level, uint8 _currency) external payable {
@@ -174,7 +242,7 @@ contract NFTStakingManager is Ownable {
             revert SM_InvalidCurrency();
         }
 
-        executePayment(msg.sender, s_badgeCosts[_level - 1], currency);
+        _executePayment(msg.sender, s_badgeCosts[_level - 1], currency);
 
         // badge added to the user's profile
         user.badges[_level - 1] = _level;
@@ -187,8 +255,9 @@ contract NFTStakingManager is Ownable {
     }
 
     // Internals
+
     //@param _amoutn is the cost of the badge
-    function executePayment(address _sender, uint256 _amount, address _currency) internal {
+    function _executePayment(address _sender, uint256 _amount, address _currency) internal {
         // the feeWallet needs to be funded in protocol's token (in this case the reward token itself)
         // 3 ways
         // 1. user pays in WBNB
@@ -221,6 +290,7 @@ contract NFTStakingManager is Ownable {
             // trasnfer USDC from the sender to this contract; then swap USDC for protocol's token and fund the feeWallet
             IERC20(USDC).transferFrom(_sender, address(this), _amount);
 
+            // approving the router to spend the USDC on behalf of the contract
             if (IERC20(USDC).allowance(address(this), ROUTER) < _amount) {
                 IERC20(USDC).approve(ROUTER, type(uint256).max);
             }
