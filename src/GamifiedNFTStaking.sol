@@ -12,6 +12,7 @@ contract NFTStakingManager is Ownable {
     error SM_BadgeForLvlMissing();
 
     event NFTStaked(address indexed user, uint256 quantity);
+    event NFTUnstaked(address indexed user, uint256 quantity);
 
     struct User {
         uint256 stakedNFTs;
@@ -30,6 +31,7 @@ contract NFTStakingManager is Ownable {
     address private constant ROUTER = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // address of Uniswap Router
     address private constant USDC = 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d; // address of USDC token
     uint256 private constant LOCKING_PERIOD = 6 weeks;
+    uint256 private constant SECS_IN_YEAR = 31536000;
 
     IERC721 private immutable s_nftToken;
     IERC20 private immutable s_rewardToken;
@@ -55,6 +57,13 @@ contract NFTStakingManager is Ownable {
     function stakeNFT(uint256 _quantity) external {
         // quant of NFTs to stake (ensure > 0) + owned by the owner
         // ensure that the user has sufficient badges to stake the tokens
+        // add the rewards earned hither to the user's pending rewards to offset the effect of resetting the lastRewardTime
+
+        //@explain this is to offset the effect of reinit the lastRewardTime for user
+        // if user makes multiple stakes, and each time we reset the lastRewardTime to current ts; then
+        // at the end during rewardClaim the timePeriod for staking would be current TS - lastRewardTs (when latest stake was made)
+        // thereby nullifying the rewards accumulated on prev staked amts
+
         // transfer NFTs to the contract
         // update user's state (update level, badges, )
         if (_quantity == 0) {
@@ -71,12 +80,18 @@ contract NFTStakingManager is Ownable {
             revert SM_BadgeForLvlMissing();
         }
 
+        User memory user = s_users[msg.sender];
+
+        if (user.stakedNFTs > 0) {
+            uint256 rewards = earned(msg.sender);
+            user.pendingRewards += rewards;
+        }
+
         for (uint256 i = 0; i < _quantity; ++i) {
             s_nftToken.safeTransferFrom(msg.sender, address(this), tokenIds[i]);
             s_stakedIds[msg.sender].push(tokenIds[i]);
         }
 
-        User memory user = s_users[msg.sender];
         user.stakedNFTs += _quantity;
         _updateLevel(msg.sender);
         s_users[msg.sender] = user;
@@ -84,8 +99,38 @@ contract NFTStakingManager is Ownable {
         emit NFTStaked(msg.sender, _quantity);
     }
 
-    function unstakeNFT(uint256[] memory _nftIds) external {
-        // Staking logic
+    function unstakeNFT(uint256 _quantity) external {
+        if (_quantity == 0) {
+            revert SM_InvalidQuantity();
+        }
+        User memory user = s_users[msg.sender];
+        if (user.stakedNFTs < _quantity) {
+            revert SM_NotEnoughNFTBalance();
+        }
+
+        if (user.stakedNFTs > 0) {
+            uint256 rewards = earned(msg.sender);
+            user.pendingRewards += rewards;
+        }
+
+        uint256[] storage tokenIds = s_stakedIds[msg.sender];
+
+        for (uint256 i = 0; i < _quantity; ++i) {
+            s_nftToken.safeTransferFrom(address(this), msg.sender, tokenIds[tokenIds.length - 1]);
+            tokenIds.pop();
+        }
+
+        user.stakedNFTs -= _quantity;
+        if (user.stakedNFTs == 0) {
+            user.lastRewarded = 0;
+        } else {
+            user.lastRewarded = block.timestamp;
+        }
+
+        _updateLevel(msg.sender);
+        s_users[msg.sender] = user;
+
+        emit NFTUnstaked(msg.sender, _quantity);
     }
 
     function stakeTokens(uint256[] memory _nftIds) external {
@@ -160,6 +205,19 @@ contract NFTStakingManager is Ownable {
             user.currentLevel = 0;
             user.isBoosted = false;
             s_users[_sender] = user;
+        }
+    }
+
+    function earned(address _user) public view returns (uint256 rewards) {
+        // returns the rewards earned by the user
+        //rewards earned = tokens staked * time staked * APR/sec
+        User memory user = s_users[_user];
+
+        if (user.stakedNFTs > 0) {
+            uint256 timeStaked = block.timestamp - user.lastRewarded;
+            uint256 APR = user.isBoosted ? s_boostedAPRs[user.currentLevel - 1] : s_APRs[user.currentLevel - 1];
+            uint256 aprSec = APR / SECS_IN_YEAR;
+            rewards = user.stakedNFTs * timeStaked * aprSec;
         }
     }
 }
