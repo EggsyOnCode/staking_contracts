@@ -10,9 +10,13 @@ contract NFTStakingManager is Ownable {
     error SM_InvalidQuantity();
     error SM_NotEnoughNFTBalance();
     error SM_BadgeForLvlMissing();
+    error SM_BadgeAlreadyExists();
+    error SM_InvalidCurrency();
+    error SM_NotEnoughBalanceForBadgePurchase();
 
-    event NFTStaked(address indexed user, uint256 quantity);
-    event NFTUnstaked(address indexed user, uint256 quantity);
+    event NFTStaked(address indexed user, uint256 indexed quantity);
+    event NFTUnstaked(address indexed user, uint256 indexed quantity);
+    event BadgeBought(address indexed user, uint8 indexed level);
 
     struct User {
         uint256 stakedNFTs;
@@ -29,9 +33,11 @@ contract NFTStakingManager is Ownable {
 
     // On BNB smart chain
     address private constant ROUTER = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // address of Uniswap Router
+    address private constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c; // address of WBNB token
     address private constant USDC = 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d; // address of USDC token
     uint256 private constant LOCKING_PERIOD = 6 weeks;
     uint256 private constant SECS_IN_YEAR = 31536000;
+    address private immutable s_feeWallet;
 
     IERC721 private immutable s_nftToken;
     IERC20 private immutable s_rewardToken;
@@ -50,7 +56,12 @@ contract NFTStakingManager is Ownable {
     // Mapping from user address to an array of staked NFT IDs.
     mapping(address user => uint256[]) private s_stakedIds;
 
-    constructor() Ownable(msg.sender) {}
+    constructor(address _feeWallet) Ownable(msg.sender) {
+        s_feeWallet = _feeWallet;
+        // add USDC as a valid currency
+        s_validCurrencies[0] = WBNB;
+        s_validCurrencies[1] = USDC;
+    }
 
     // Externals
 
@@ -141,7 +152,90 @@ contract NFTStakingManager is Ownable {
         // Staking logic
     }
 
+    function buyBadge(uint8 _level, uint8 _currency) external payable {
+        // Buying badge logic
+
+        // if the user has the badge for the level then they can't buy the badge for the same level
+        // check if the user has required staked NFTs to warrant a badge purchase
+        // check if the currenyc is a valid choice
+        // use paymentExecutor to buy trasnfer the funds; if successufl add a badge to the user's profile
+
+        User memory user = s_users[msg.sender];
+        if (user.badges[_level - 1] == _level) {
+            revert SM_BadgeAlreadyExists();
+        }
+
+        if (user.stakedNFTs < s_badgePreReqs[_level - 1]) {
+            revert SM_NotEnoughNFTBalance();
+        }
+
+        address currency = s_validCurrencies[_currency];
+        if (currency == address(0)) {
+            revert SM_InvalidCurrency();
+        }
+
+        executePayment(msg.sender, s_badgeCosts[_level - 1], currency);
+
+        // badge added to the user's profile
+        user.badges[_level - 1] = _level;
+        // buying a new badge may change the user's level; NOT automatically tho!!
+        //q revise logic for this
+        _updateLevel(msg.sender);
+        s_users[msg.sender] = user;
+
+        emit BadgeBought(msg.sender, _level);
+    }
+
     // Internals
+    //@param _amoutn is the cost of the badge
+    function executePayment(address _sender, uint256 _amount, address _currency) internal {
+        // the feeWallet needs to be funded in protocol's token (in this case the reward token itself)
+        // 3 ways
+        // 1. user pays in WBNB
+        // 2. user pays in USDC
+        // 3. user pays in protocol's token
+
+        if (_currency == WBNB) {
+            address[] memory path = new address[](2);
+            path[0] = WBNB;
+            path[1] = USDC;
+
+            uint256[] memory amounts = s_router.getAmountsOut(msg.value, path);
+
+            if (_amount > amounts[1]) {
+                revert SM_NotEnoughBalanceForBadgePurchase();
+            }
+
+            address[] memory swapPath = new address[](2);
+            path[0] = WBNB;
+            path[1] = USDC;
+            path[2] = address(s_rewardToken);
+
+            //swapExactETH takes in native tokens; hence the value: msg.value ; hence also the first token in swapPath is WBNB (native token for BNB chain)
+            s_router.swapExactETHForTokens{value: msg.value}(_amount, swapPath, s_feeWallet, block.timestamp);
+        } else if (_currency == USDC) {
+            if (IERC20(USDC).balanceOf(_sender) < _amount) {
+                revert SM_NotEnoughBalanceForBadgePurchase();
+            }
+
+            // trasnfer USDC from the sender to this contract; then swap USDC for protocol's token and fund the feeWallet
+            IERC20(USDC).transferFrom(_sender, address(this), _amount);
+
+            if (IERC20(USDC).allowance(address(this), ROUTER) < _amount) {
+                IERC20(USDC).approve(ROUTER, type(uint256).max);
+            }
+
+            address[] memory path = new address[](2);
+            path[0] = USDC;
+            path[1] = address(s_rewardToken);
+            s_router.swapExactTokensForTokens(_amount, 0, path, s_feeWallet, block.timestamp);
+        } else {
+            if (s_rewardToken.balanceOf(_sender) < _amount) {
+                revert SM_NotEnoughBalanceForBadgePurchase();
+            }
+            s_rewardToken.transferFrom(_sender, s_feeWallet, _amount);
+        }
+    }
 
     function _getLevel(uint256 _nfts) internal view returns (uint8) {
         // if nfts are 3 and first lvl's pre Req is max 1-5 ; then 3 < 5 and hence lvl 1
