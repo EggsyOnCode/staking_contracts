@@ -66,14 +66,31 @@ contract NFTStakingManager is Ownable {
     mapping(address user => uint256[]) private s_stakedIds;
     uint256 private s_totalRewards; // total Rewards disbursed by the contract till now
 
-    constructor(address _feeWallet) Ownable(msg.sender) {
+    constructor(address _feeWallet, address _nftToken, address _rewardToken) Ownable(msg.sender) {
         s_feeWallet = _feeWallet;
+        s_nftToken = IERC721(_nftToken);
+        s_rewardToken = IERC20(_rewardToken);
+
         // add USDC as a valid currency
         s_validCurrencies[0] = WBNB;
         s_validCurrencies[1] = USDC;
     }
 
     // Externals
+
+    function setPoolConfig(
+        uint256[5] memory _APRs,
+        uint256[5] memory _boostedAPRs,
+        uint256[5] memory _boosterRewards,
+        uint256[5] memory _badgeCosts,
+        uint256[5] memory _badgePreReqs
+    ) external onlyOwner {
+        s_APRs = _APRs;
+        s_boostedAPRs = _boostedAPRs;
+        s_boosterRewards = _boosterRewards;
+        s_badgeCosts = _badgeCosts;
+        s_badgePreReqs = _badgePreReqs;
+    }
 
     function stakeNFT(uint256 _quantity) external {
         // quant of NFTs to stake (ensure > 0) + owned by the owner
@@ -262,12 +279,33 @@ contract NFTStakingManager is Ownable {
         // calcaulting total Rewrads (pending rewards + earned)
         // if the user is boosted then the those staked tokens are locked and won't be available for withdrawal
         // rewards are minted to the user (instead of trasnferred)
-        User memory user = s_users[msg.sender];
         uint256 totalRewards = calculateTotalRewards(msg.sender);
 
         s_rewardToken.mint(msg.sender, totalRewards);
         s_totalRewards += totalRewards;
         emit RewardsDisbursed(msg.sender, totalRewards);
+    }
+
+    // external setters
+
+    function setAPRs(uint256[5] memory _APRs) external onlyOwner {
+        s_APRs = _APRs;
+    }
+
+    function setBoostedAPRs(uint256[5] memory _boostedAPRs) external onlyOwner {
+        s_boostedAPRs = _boostedAPRs;
+    }
+
+    function setBoosterRewards(uint256[5] memory _boostedRewards) external onlyOwner {
+        s_boosterRewards = _boostedRewards;
+    }
+
+    function setBadgeCosts(uint256[5] memory _badgeCosts) external onlyOwner {
+        s_badgeCosts = _badgeCosts;
+    }
+
+    function setBadgePreReqs(uint256[5] memory _badgePreReqs) external onlyOwner {
+        s_badgePreReqs = _badgePreReqs;
     }
 
     // Internals
@@ -420,5 +458,9 @@ contract NFTStakingManager is Ownable {
             uint256 aprSec = APR / SECS_IN_YEAR;
             rewards = user.stakedNFTs * timeStaked * aprSec;
         }
+    }
+
+    function getAmtStaked(address _user) external view returns (uint256) {
+        return s_users[_user].stakedNFTs;
     }
 }
