@@ -241,6 +241,7 @@ contract NFTStakingManager is Ownable {
         emit TokensUnstaked(msg.sender, _quantity);
     }
 
+    // param _level is the badge level to buy ; starts at 1
     function buyBadge(uint8 _level, uint8 _currency) external payable {
         // Buying badge logic
 
@@ -254,7 +255,7 @@ contract NFTStakingManager is Ownable {
             revert SM_BadgeAlreadyExists();
         }
 
-        if (user.stakedNFTs < s_badgePreReqs[_level - 1]) {
+        if (s_nftToken.balanceOf(msg.sender) < s_badgePreReqs[_level - 1]) {
             revert SM_NotEnoughNFTBalance();
         }
 
@@ -462,5 +463,13 @@ contract NFTStakingManager is Ownable {
 
     function getAmtStaked(address _user) external view returns (uint256) {
         return s_users[_user].stakedNFTs;
+    }
+
+    function getStakedNFTs(address _user) external view returns (uint256[] memory) {
+        return s_stakedIds[_user];
+    }
+
+    function getRouter() external view returns (address) {
+        return ROUTER;
     }
 }
