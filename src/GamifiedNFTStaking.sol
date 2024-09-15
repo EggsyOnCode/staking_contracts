@@ -5,8 +5,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC721} from "./interfaces/IERC721.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IRouter} from "./interfaces/IRouter.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
-contract NFTStakingManager is Ownable {
+// 721Receiver cuz staked NFTs are transferred to the contract (for now) we can use a vault later on!
+contract NFTStakingManager is Ownable, IERC721Receiver {
     error SM_InvalidQuantity();
     error SM_NotEnoughNFTBalance();
     error SM_NotEnoughProtocolTokens();
@@ -471,5 +473,13 @@ contract NFTStakingManager is Ownable {
 
     function getRouter() external view returns (address) {
         return ROUTER;
+    }
+
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data)
+        external
+        override
+        returns (bytes4)
+    {
+        return this.onERC721Received.selector;
     }
 }

@@ -24,6 +24,7 @@ contract NftStakingTest is Test {
     // on bsc
     address public UNI_FACT = 0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6;
     address private constant ROUTER = 0x10ED43C718714eb63d5aA57B78B54704E256024E; // address of Uniswap Router
+    address USDC_HOLDER = 0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8;
 
     function setUp() external {
         // forking BSC
@@ -34,7 +35,7 @@ contract NftStakingTest is Test {
         vm.selectFork(bscFork);
 
         // reward token depl
-        _rewardToken = new ERC20Mock("Reward Token", "RWD", address(this), 100_000);
+        _rewardToken = new ERC20Mock("Reward Token", "RWD", address(this), 100_000 ether);
 
         //nft token depl
         _nftToken = new MyNFT("https://myapi.com/api/", address(_usdc));
@@ -47,16 +48,22 @@ contract NftStakingTest is Test {
         _nftToken.premintNFTs(USER_2, PRE_MINTED_NFTS);
 
         // approve staking manager to transfer nfts
-        vm.prank(USER_1);
+        vm.startPrank(USER_1);
         _nftToken.setApprovalForAll(address(_stakingManager), true);
+        _usdc.approve(address(_stakingManager), type(uint256).max);
+        vm.stopPrank();
 
-        vm.prank(USER_2);
+        vm.startPrank(USER_2);
         _nftToken.setApprovalForAll(address(_stakingManager), true);
+        _usdc.approve(address(_stakingManager), type(uint256).max);
+        vm.stopPrank();
 
         //fund USDC to users
-        _usdc.mint(address(this), 100_000);
-        _usdc.transfer(USER_1, 100);
-        _usdc.transfer(USER_2, 100);
+        vm.prank(USDC_HOLDER);
+        _usdc.transfer(address(this), 60_000_000 ether);
+
+        _usdc.transfer(USER_1, 100 ether);
+        _usdc.transfer(USER_2, 100 ether);
 
         // setting up pool config
         uint256[5] memory APRs;

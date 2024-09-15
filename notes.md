@@ -15,3 +15,7 @@
 
 - how to add more precision to my calculations?
 - Add Caching of storage vars inside funcs to reduce gas
+
+
+# Gamified NFT staking
+- the nfts should be stored in a vault?? instead of being transferred to the staking contract?
