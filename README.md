@@ -1,66 +1,102 @@
-## Foundry
+# Staking Rewards Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This repository contains smart contracts for two types of staking protocols:
 
-Foundry consists of:
+1. **Traditional Yield Farming**: Inspired by **MasterChef** and **Synthetix**, this contract allows users to stake tokens and earn rewards.
+2. **Gamified NFT Staking**: A next-level staking system where users stake NFTs to earn rewards through a gamified approach, featuring multiple staking levels, badges, and boosted rewards.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Features
 
-## Documentation
+### 1. Yield Farming Contract
+- Staking mechanism inspired by **MasterChef** and **Synthetix** models.
+- Users can stake ERC20 tokens to earn reward tokens.
+- Configurable reward distribution rate.
+  
+### 2. Gamified NFT Staking
+- **5 distinct staking levels**, each requiring a badge (purchasable via USDC or native blockchain tokens like WETH/WBNB).
+- **Fixed APRs** based on the staking level.
+- Reward boosts available by **locking reward tokens** for 3 weeks.
+- Flexible configuration for **NFT attributes**, **badge requirements**, and **reward distribution**.
+  
+## Testing
 
-https://book.getfoundry.sh/
+This project comes with an extensive testing suite to ensure security, stability, and scalability:
 
-## Usage
+- **Unit Testing**: Comprehensive unit tests to validate individual functions.
+- **Integration Testing**: Ensures all contracts interact as expected.
+- **Fork Testing**: Tests against live blockchain states, such as Ethereum mainnet, BSC, and more.
+- **Fuzz Testing**: Randomized inputs to uncover edge cases.
+- **Invariant Testing**: Verifies protocol invariants (e.g., no tokens are lost during staking/unstaking).
 
-### Build
+## Getting Started
 
-```shell
-$ forge build
+### Prerequisites
+
+- Foundry: Install Foundry by following the instructions at [foundry.sh](https://getfoundry.sh)
+- Node.js (for JavaScript dependencies)
+
+### Installation
+
+1. Clone this repository:
+
+```bash
+git clone https://github.com/EggsyOnCode/staking-rewards
+cd staking-rewards
 ```
 
-### Test
+2. Install dependencies:
 
-```shell
-$ forge test
+```bash
+forge install
 ```
 
-### Format
+3. Compile contracts:
 
-```shell
-$ forge fmt
+```bash
+forge build
 ```
 
-### Gas Snapshots
+### Running Tests
 
-```shell
-$ forge snapshot
+To run the entire test suite:
+
+```bash
+forge test
 ```
 
-### Anvil
+For fork testing against a specific chain (e.g., Binance Smart Chain):
 
-```shell
-$ anvil
+```bash
+forge test --fork-url https://bsc-rpc.publicnode.com
 ```
 
-### Deploy
+### Contract Configuration
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+- **APR Settings**: You can adjust APRs, boosted rewards, and badge configurations in the `NFTStakingManager.sol` contract.
+- **Badges**: Each staking level requires a unique badge. Badge costs and staking prerequisites can be configured in the setup section.
+- **Reward Boosting**: Users can lock their reward tokens to earn boosted rewards for a duration of 3 weeks.
+
+### Deployment
+
+You can deploy the contracts on any EVM-compatible chain (Ethereum, Binance Smart Chain, Polygon, etc.). Follow these steps for deployment:
+
+1. Set up your private key and RPC URLs in `.env`.
+2. Run the deployment script:
+
+```bash
+forge script scripts/Deploy.sol --rpc-url <YOUR_RPC_URL> --private-key <YOUR_PRIVATE_KEY> --broadcast
 ```
 
-### Cast
+## Folder Structure
 
-```shell
-$ cast <subcommand>
-```
+- `contracts/`: Contains the staking contracts.
+- `test/`: Includes all unit, integration, fork, fuzz, and invariant tests.
+- `scripts/`: Deployment and setup scripts.
 
-### Help
+## Contributing
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Feel free to fork the repository and create a pull request if you’d like to contribute!
+
+## License
+
+This project is licensed under the MIT License.
